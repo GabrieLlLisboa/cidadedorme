@@ -176,6 +176,13 @@ function updatePhaseDisplay(phase) {
   };
   
   currentPhase.textContent = phaseNames[phase] || phase;
+  
+  // Animação de dia/noite
+  if (phase === 'night') {
+    document.body.classList.add('night-mode');
+  } else {
+    document.body.classList.remove('night-mode');
+  }
 }
 
 function getRoleEmoji(role) {
