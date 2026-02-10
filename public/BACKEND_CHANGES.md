@@ -1,5 +1,150 @@
 # 🔧 MUDANÇAS OBRIGATÓRIAS NO BACKEND (server.js)
 
+## ⚠️ BUG CRÍTICO - LEIA PRIMEIRO!
+
+### 🐛 PROBLEMA: "Cidade Dorme" não sai da tela preta
+
+**CAUSA**: Quando todos os jogadores com ações noturnas terminam suas ações, a noite não está terminando automaticamente.
+
+**SOLUÇÃO OBRIGATÓRIA**: O backend PRECISA detectar quando todos fizeram suas ações e **FORÇAR** a mudança para a fase "day".
+
+```javascript
+// Exemplo de como resolver:
+
+let nightActionsCompleted = {};
+
+socket.on('nightAction', (data) => {
+  // Registra a ação
+  nightActionsCompleted[socket.nick] = true;
+  
+  // Confirma para o jogador
+  socket.emit('actionConfirmed', {
+    action: data.action,
+    target: data.target
+  });
+  
+  // VERIFICAR SE TODOS COM AÇÕES JÁ FIZERAM
+  checkIfNightShouldEnd(room);
+});
+
+function checkIfNightShouldEnd(room) {
+  // Pega todos que precisam fazer ação
+  const playersWithActions = room.players.filter(p => 
+    p.alive && ['assassino', 'anjo', 'detetive'].includes(p.role)
+  );
+  
+  // IMPORTANTE: Cidadãos não fazem ação! Não conte eles aqui!
+  
+  // Verifica se todos já fizeram
+  const allDone = playersWithActions.every(p => 
+    nightActionsCompleted[p.nick] === true
+  );
+  
+  if (allDone) {
+    // TODOS FIZERAM! Termina a noite imediatamente
+    setTimeout(() => {
+      processNightAndStartDay(room);
+    }, 1000); // 1 segundo de delay para suavizar
+  }
+}
+
+function processNightAndStartDay(room) {
+  // Processa as ações da noite
+  const dayMessage = resolveNightActions(room);
+  
+  // Limpa ações
+  nightActionsCompleted = {};
+  
+  // MUDA PARA DIA - ISSO É CRÍTICO!
+  io.to(room.id).emit('phaseChange', {
+    phase: 'day',
+    round: room.round,
+    message: dayMessage
+  });
+}
+```
+
+**IMPORTANTE**: Se você não implementar essa verificação, o jogo vai TRAVAR na tela preta!
+
+### 🔍 DIAGNÓSTICO DO BUG
+
+**Sintoma**: Todos fizeram suas ações, mas a tela continua preta com "A cidade dorme..."
+
+**Causa Raiz**: O backend não está enviando o evento `phaseChange` com `phase: 'day'`
+
+**Como Testar se está Funcionando**:
+1. Inicie um jogo com 5+ jogadores
+2. Assassino mata alguém
+3. Anjo salva alguém
+4. Detetive investiga alguém
+5. **IMEDIATAMENTE** após a última ação, deve amanhecer (1-2 segundos)
+6. Se demorar mais de 3 segundos ou ficar travado = BUG!
+
+### ✅ FLUXO CORRETO DA NOITE
+
+```
+1. Fase muda para 'night'
+   ↓
+2. Assassino escolhe vítima → registra ação
+   ↓
+3. Anjo escolhe quem salvar → registra ação
+   ↓
+4. Detetive escolhe quem investigar → registra ação → recebe resultado
+   ↓
+5. Backend detecta que TODOS fizeram ações
+   ↓
+6. Backend processa noite (verifica salvamentos, mortes)
+   ↓
+7. Backend emite 'phaseChange' com phase: 'day'
+   ↓
+8. Frontend remove tela preta e mostra resultado
+```
+
+**O passo 5 É CRÍTICO!** Sem ele, o jogo trava.
+
+### 🎯 CASOS ESPECIAIS DA NOITE
+
+**Caso 1: Só tem cidadãos vivos**
+- Se todos os assassinos/detetives/anjos morreram
+- Lista de `playersWithActions` fica vazia
+- Noite deve terminar IMEDIATAMENTE
+- Solução: Adicione um check para isso
+
+```javascript
+function checkIfNightShouldEnd(room) {
+  const playersWithActions = room.players.filter(p => 
+    p.alive && ['assassino', 'anjo', 'detetive'].includes(p.role)
+  );
+  
+  // Se não tem ninguém com ação, termina a noite
+  if (playersWithActions.length === 0) {
+    processNightAndStartDay(room);
+    return;
+  }
+  
+  // Verifica se todos já fizeram
+  const allDone = playersWithActions.every(p => 
+    nightActionsCompleted[p.nick] === true
+  );
+  
+  if (allDone) {
+    setTimeout(() => {
+      processNightAndStartDay(room);
+    }, 1000);
+  }
+}
+```
+
+**Caso 2: Jogador com ação morreu durante o dia**
+- Não conte jogadores mortos em `playersWithActions`
+- Use `.filter(p => p.alive)`
+
+**Caso 3: Jogador desconectou durante a noite**
+- Considere adicionar um timeout (ex: 60 segundos)
+- Se timeout, processe a noite sem a ação dele
+
+---
+
 ## 📋 Resumo das Mudanças no Servidor
 
 Estas alterações precisam ser implementadas no seu arquivo `server.js` para que o jogo funcione corretamente com as novas mecânicas.
