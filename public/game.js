@@ -205,7 +205,10 @@ function updateActionsPanel() {
     actionsPanel.classList.remove('hidden');
     document.getElementById('actionsTitle').textContent = '😇 Escolha quem salvar:';
     
-    alivePlayers.forEach(player => {
+    // Angel sees ALL players (doesn't know who died yet)
+    const allPlayersExceptMe = gameState.players.filter(p => p.nick !== myNick);
+    
+    allPlayersExceptMe.forEach(player => {
       const btn = document.createElement('button');
       btn.textContent = player.nick;
       btn.onclick = () => performNightAction('save', player.nick);
@@ -402,11 +405,12 @@ socket.on('phaseChange', (data) => {
   if (data.phase === 'night') {
     phaseMessage.classList.add('hidden');
     
-    // Show night overlay only for citizens
+    // Show night overlay for citizens (they stay in the dark)
     if (myRole === 'cidadao') {
       showNightOverlay();
     }
   } else if (data.phase === 'day') {
+    // Only hide night overlay when day actually starts
     hideNightOverlay();
     showMessage(phaseMessage, data.message, 'info');
     addChatMessage('Sistema', data.message, true);
@@ -442,16 +446,21 @@ socket.on('actionConfirmed', (data) => {
   addChatMessage('Sistema', `Ação confirmada: ${actions[data.action]} ${data.target}`, true);
   actionsPanel.classList.add('hidden');
   
-  // If citizen or action performed, show night overlay
-  if (myRole === 'cidadao' || data.action) {
-    showNightOverlay();
-  }
+  // After performing action, show night overlay (stay in the dark until day)
+  showNightOverlay();
 });
 
 socket.on('investigationResult', (data) => {
   hideNightOverlay();
-  showMessage(phaseMessage, data.message, data.isAssassin ? 'error' : 'success');
-  addChatMessage('Sistema', data.message, true);
+  
+  // Show if detective was right or wrong
+  if (data.isAssassin) {
+    showMessage(phaseMessage, `🔍 ${data.message} - Você ACERTOU! Ele é o assassino! 🎯`, 'error');
+    addChatMessage('Sistema', `🔍 ${data.message} - Você ACERTOU! Ele é o assassino! 🎯`, true);
+  } else {
+    showMessage(phaseMessage, `🔍 ${data.message} - Você ERROU! Ele é inocente. ✅`, 'success');
+    addChatMessage('Sistema', `🔍 ${data.message} - Você ERROU! Ele é inocente. ✅`, true);
+  }
 });
 
 socket.on('voteConfirmed', (data) => {
