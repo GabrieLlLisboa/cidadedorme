@@ -39,6 +39,8 @@ const mainContent = document.getElementById('mainContent');
 const gameStartOverlay = document.getElementById('gameStartOverlay');
 const roleRevealOverlay = document.getElementById('roleRevealOverlay');
 const nightOverlay = document.getElementById('nightOverlay');
+const newRoundOverlay = document.getElementById('newRoundOverlay');
+const newRoundNumber = document.getElementById('newRoundNumber');
 const roleDisplay = document.getElementById('roleDisplay');
 const roleDescription = document.getElementById('roleDescription');
 const discussionTimerEl = document.getElementById('discussionTimer');
@@ -308,6 +310,15 @@ function hideNightOverlay() {
   nightOverlay.classList.add('hidden');
 }
 
+function showNewRoundOverlay(roundNumber) {
+  newRoundNumber.textContent = roundNumber;
+  newRoundOverlay.classList.remove('hidden');
+  
+  setTimeout(() => {
+    newRoundOverlay.classList.add('hidden');
+  }, 2000);
+}
+
 function startDiscussionTimer(seconds) {
   discussionTimerEl.classList.remove('hidden');
   let timeLeft = seconds;
@@ -405,9 +416,21 @@ socket.on('phaseChange', (data) => {
   if (data.phase === 'night') {
     phaseMessage.classList.add('hidden');
     
-    // Show night overlay for citizens (they stay in the dark)
-    if (myRole === 'cidadao') {
-      showNightOverlay();
+    // Show new round overlay for rounds 2+
+    if (data.round >= 2) {
+      showNewRoundOverlay(data.round);
+      
+      // After overlay, show night for citizens
+      setTimeout(() => {
+        if (myRole === 'cidadao') {
+          showNightOverlay();
+        }
+      }, 2000);
+    } else {
+      // First round, just show night for citizens
+      if (myRole === 'cidadao') {
+        showNightOverlay();
+      }
     }
   } else if (data.phase === 'day') {
     // Only hide night overlay when day actually starts
@@ -418,6 +441,12 @@ socket.on('phaseChange', (data) => {
     // Start 10 second discussion timer
     startDiscussionTimer(10);
   } else if (data.phase === 'voting') {
+    // Clear discussion timer
+    if (discussionTimer) {
+      clearInterval(discussionTimer);
+    }
+    discussionTimerEl.classList.add('hidden');
+    
     showMessage(phaseMessage, data.message, 'warning');
     addChatMessage('Sistema', data.message, true);
   } else {

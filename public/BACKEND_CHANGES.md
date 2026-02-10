@@ -6,22 +6,54 @@ Estas alterações precisam ser implementadas no seu arquivo `server.js` para qu
 
 ---
 
-## 1. ✅ REVELAR QUEM O ANJO SALVOU
+## 1. 🔄 ANÚNCIO DE NOVA RODADA (Rodada 2+)
+
+### 📍 Quando implementar:
+Após a votação terminar e antes da noite começar (apenas da rodada 2 em diante)
+
+### 🔨 O que fazer:
+
+Adicione um delay de 10 segundos mostrando "Começando Rodada X" antes da noite começar:
+
+```javascript
+// Depois que a votação termina:
+
+function startNewRound(room) {
+  room.round++;
+  
+  if (room.round >= 2) {
+    // Envia mensagem de nova rodada
+    io.to(room.id).emit('phaseChange', {
+      phase: 'night',
+      round: room.round,
+      message: `🌙 Rodada ${room.round} começando...`
+    });
+    
+    // O frontend já tem um overlay de 2 segundos
+    // Depois automaticamente começa a noite
+  } else {
+    // Primeira rodada, vai direto pra noite
+    io.to(room.id).emit('phaseChange', {
+      phase: 'night',
+      round: room.round,
+      message: '🌙 A noite cai sobre a cidade...'
+    });
+  }
+}
+```
+
+---
+
+## 2. ✅ REVELAR QUEM O ASSASSINO TENTOU MATAR E QUEM O ANJO SALVOU
 
 ### 📍 Localização:
 Na função que processa o fim da noite e início do dia (quando resolve as ações noturnas)
 
 ### 🔨 O que fazer:
 
-Quando processar as ações da noite, você precisa:
-1. Verificar quem o assassino tentou matar
-2. Verificar quem o anjo tentou salvar
-3. Se forem a mesma pessoa, a pessoa sobrevive
-4. **IMPORTANTE**: Avisar PARA TODOS quem foi salvo pelo anjo
+**IMPORTANTE**: Agora você precisa revelar QUEM o assassino tentou matar E quem o anjo salvou:
 
 ```javascript
-// Exemplo de implementação:
-
 function processNight(gameRoom) {
   let killedPlayer = null;
   let savedPlayer = null;
@@ -46,27 +78,33 @@ function processNight(gameRoom) {
   }
   
   // Monta a mensagem do dia
-  let dayMessage = '';
+  let dayMessage = '☀️ Amanheceu!\n';
   
+  // CASO 1: Anjo salvou a pessoa que ia morrer
   if (wasSaved) {
-    // REVELAR QUEM FOI SALVO
-    dayMessage = `☀️ Amanheceu! O anjo salvou ${savedPlayer} esta noite! ✨`;
-  } else if (savedPlayer && !wasSaved) {
-    // Anjo tentou salvar alguém mas não era quem ia morrer
-    dayMessage = `☀️ Amanheceu! O anjo tentou salvar ${savedPlayer}, mas não era necessário.`;
-  }
-  
-  if (killedPlayer) {
+    dayMessage += `🔪 O assassino tentou matar ${savedPlayer}...\n`;
+    dayMessage += `😇 Mas o anjo o salvou! ✨`;
+  } 
+  // CASO 2: Alguém morreu (anjo salvou pessoa errada ou não salvou ninguém)
+  else if (killedPlayer) {
     // Mata o jogador
     const player = players.find(p => p.nick === killedPlayer);
     if (player) {
       player.alive = false;
     }
-    dayMessage += `\n💀 ${killedPlayer} foi morto esta noite!`;
+    dayMessage += `💀 ${killedPlayer} foi morto esta noite!`;
+    
+    if (savedPlayer && savedPlayer !== killedPlayer) {
+      dayMessage += `\n😇 O anjo tentou salvar ${savedPlayer}, mas não era quem estava em perigo.`;
+    }
   }
-  
-  if (!killedPlayer && !wasSaved && !savedPlayer) {
-    dayMessage = '☀️ Amanheceu! A noite foi tranquila.';
+  // CASO 3: Ninguém morreu e anjo não fez nada ou salvou alguém desnecessariamente
+  else {
+    if (savedPlayer) {
+      dayMessage += `😇 O anjo tentou salvar ${savedPlayer}, mas não havia perigo esta noite.`;
+    } else {
+      dayMessage += 'A noite foi tranquila. Ninguém morreu.';
+    }
   }
   
   // Envia a mensagem para todos
@@ -80,7 +118,7 @@ function processNight(gameRoom) {
 
 ---
 
-## 2. ✅ MOSTRAR SE O DETETIVE ACERTOU OU ERROU
+## 3. ✅ MOSTRAR SE O DETETIVE ACERTOU OU ERROU
 
 ### 📍 Localização:
 Quando o detetive faz a investigação (action: 'investigate')
@@ -119,7 +157,94 @@ O frontend já vai mostrar "ACERTOU!" ou "ERROU!" automaticamente.
 
 ---
 
-## 3. ✅ ANJO VÊ TODOS OS JOGADORES (INCLUINDO QUEM PODE TER MORRIDO)
+## 4. ♾️ VOTAÇÃO INFINITA - SÓ ACABA QUANDO TODOS VOTAREM
+
+### 📍 Localização:
+Na lógica de votação
+
+### 🔨 O que fazer:
+
+**IMPORTANTE**: A votação NÃO deve ter timer! Ela só termina quando TODOS os jogadores vivos votarem.
+
+```javascript
+let votes = {}; // { playerNick: targetNick }
+
+socket.on('vote', (data) => {
+  const player = players.find(p => p.nick === socket.nick);
+  
+  // Verifica se jogador está vivo e ainda não votou
+  if (player && player.alive && !player.voted) {
+    // Registra voto
+    votes[socket.nick] = data.target;
+    player.voted = true;
+    
+    // Confirma voto para o jogador
+    socket.emit('voteConfirmed', { target: data.target });
+    
+    // Atualiza estado do jogo para todos
+    io.to(roomId).emit('gameState', getGameState(room));
+    
+    // Verifica se TODOS os jogadores vivos já votaram
+    const alivePlayers = players.filter(p => p.alive);
+    const allVoted = alivePlayers.every(p => p.voted);
+    
+    if (allVoted) {
+      // Todos votaram! Processa resultado
+      processVoting(room, votes);
+    }
+    // Se ainda faltam votos, não faz nada! Espera os outros votarem
+  }
+});
+
+function processVoting(room, votes) {
+  // Conta votos
+  const voteCounts = {};
+  
+  Object.values(votes).forEach(target => {
+    voteCounts[target] = (voteCounts[target] || 0) + 1;
+  });
+  
+  // Encontra quem teve mais votos
+  let maxVotes = 0;
+  let eliminated = null;
+  
+  Object.entries(voteCounts).forEach(([player, count]) => {
+    if (count > maxVotes) {
+      maxVotes = count;
+      eliminated = player;
+    }
+  });
+  
+  // Elimina o jogador
+  if (eliminated) {
+    const player = room.players.find(p => p.nick === eliminated);
+    if (player) {
+      player.alive = false;
+    }
+    
+    io.to(room.id).emit('votingResult', {
+      message: `⚖️ ${eliminated} foi eliminado com ${maxVotes} votos!`
+    });
+  }
+  
+  // Reseta votos
+  room.players.forEach(p => p.voted = false);
+  
+  // Verifica fim de jogo
+  checkGameEnd(room);
+  
+  // Se jogo não acabou, começa nova rodada
+  if (!room.gameEnded) {
+    setTimeout(() => {
+      startNewRound(room);
+    }, 3000);
+  }
+}
+```
+
+---
+
+## 5. ✅ ANJO VÊ TODOS OS JOGADORES (INCLUINDO QUEM PODE TER MORRIDO)
 
 ### 📍 Localização:
 Isso JÁ está implementado no frontend!
@@ -135,7 +260,7 @@ Isso JÁ está implementado no frontend!
 
 ---
 
-## 4. ⚫ TELA PRETA ATÉ O DIA COMEÇAR
+## 6. ⚫ TELA PRETA ATÉ O DIA COMEÇAR
 
 ### ℹ️ Já implementado no frontend!
 
@@ -152,10 +277,12 @@ Agora funciona assim:
 
 Certifique-se que seu backend tem:
 
-- [ ] ✅ Lógica de salvamento do anjo (comparar kill com save)
-- [ ] ✅ Mensagem revelando QUEM foi salvo pelo anjo
-- [ ] ✅ Mensagem dizendo se anjo salvou alguém desnecessariamente
+- [ ] ✅ Anúncio "Começando Rodada X" com delay de 2 segundos (rodadas 2+)
+- [ ] ✅ Mensagem detalhada revelando quem assassino tentou matar
+- [ ] ✅ Mensagem revelando quem o anjo salvou
+- [ ] ✅ Diferentes mensagens para cada cenário (salvou certo, salvou errado, etc)
 - [ ] ✅ Enviar `isAssassin: true/false` para o detetive
+- [ ] ✅ Votação infinita - só termina quando TODOS votarem (sem timer!)
 - [ ] ✅ Distribuição correta de papéis:
   - 3-4 jogadores: 1 assassino + cidadãos
   - 5-6 jogadores: 1 assassino, 1 detetive, 1 anjo + cidadãos
@@ -163,51 +290,52 @@ Certifique-se que seu backend tem:
 
 ---
 
-## 🎯 EXEMPLO COMPLETO DE LÓGICA DA NOITE
+## 🎯 FLUXO COMPLETO DE UMA RODADA
+
+```
+1. ⚖️ VOTAÇÃO (infinita - espera todos votarem)
+   ↓
+2. 💀 ELIMINAÇÃO (mostra quem foi eliminado)
+   ↓
+3. ⏱️ DELAY 3 segundos
+   ↓
+4. 🔄 "Começando Rodada X" (2 segundos) [APENAS RODADA 2+]
+   ↓
+5. 🌙 NOITE (assassino, anjo, detetive agem)
+   ↓
+6. ☀️ DIA (revela mortes/salvamentos com detalhes)
+   ↓
+7. 💬 DISCUSSÃO (10 segundos automáticos)
+   ↓
+8. 🔁 Volta para VOTAÇÃO
+```
+
+---
+
+## 🎯 EXEMPLO COMPLETO DE MENSAGENS DO DIA
 
 ```javascript
-function resolveNightActions(room) {
-  const { players, nightActions } = room;
-  
-  // Coleta ações
-  const killActions = nightActions.filter(a => a.action === 'kill');
-  const saveAction = nightActions.find(a => a.action === 'save');
-  
-  // Processa mortes (pode ter 2 assassinos)
-  let targets = killActions.map(k => k.target);
-  let savedTarget = saveAction ? saveAction.target : null;
-  
-  // Remove salvos da lista de mortes
-  if (savedTarget) {
-    targets = targets.filter(t => t !== savedTarget);
-  }
-  
-  // Mata os jogadores
-  targets.forEach(target => {
-    const player = players.find(p => p.nick === target);
-    if (player) player.alive = false;
-  });
-  
-  // Monta mensagem
-  let message = '☀️ Amanheceu!\n';
-  
-  if (savedTarget) {
-    const wasSaved = killActions.some(k => k.target === savedTarget);
-    if (wasSaved) {
-      message += `😇 O anjo salvou ${savedTarget}! ✨\n`;
-    } else {
-      message += `😇 O anjo tentou salvar ${savedTarget}, mas não era necessário.\n`;
-    }
-  }
-  
-  if (targets.length > 0) {
-    message += `💀 ${targets.join(', ')} ${targets.length > 1 ? 'foram mortos' : 'foi morto'} esta noite!`;
-  } else if (targets.length === 0 && !savedTarget) {
-    message += 'A noite foi tranquila. Ninguém morreu.';
-  }
-  
-  return message;
-}
+// EXEMPLO 1: Anjo salvou quem ia morrer
+"☀️ Amanheceu!
+🔪 O assassino tentou matar João...
+😇 Mas o anjo o salvou! ✨"
+
+// EXEMPLO 2: Alguém morreu e anjo salvou pessoa errada
+"☀️ Amanheceu!
+💀 Maria foi morta esta noite!
+😇 O anjo tentou salvar João, mas não era quem estava em perigo."
+
+// EXEMPLO 3: Alguém morreu e anjo não fez nada
+"☀️ Amanheceu!
+💀 Pedro foi morto esta noite!"
+
+// EXEMPLO 4: Ninguém morreu (assassino não agiu ou erro)
+"☀️ Amanheceu!
+😇 O anjo tentou salvar Carlos, mas não havia perigo esta noite."
+
+// EXEMPLO 5: Noite tranquila
+"☀️ Amanheceu!
+A noite foi tranquila. Ninguém morreu."
 ```
 
 ---

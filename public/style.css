@@ -427,6 +427,10 @@ body {
   background: linear-gradient(135deg, #2C3E50 0%, #34495E 100%);
 }
 
+#newRoundOverlay {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
 .night-overlay {
   background: #000000;
 }
