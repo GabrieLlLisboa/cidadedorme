@@ -1,145 +1,226 @@
-# 🌙 Cidade Dorme - Jogo Multiplayer
+# 🌙 Cidade Dorme - Jogo Web Mobile-First
 
-Jogo online multiplayer baseado no clássico "Cidade Dorme" (Mafia/Werewolf).
+Aplicação web em tempo real do jogo social "Cidade Dorme", otimizada para dispositivos móveis.
 
-## 🎮 Como Funciona
+## 🎮 Sobre o Jogo
+
+Cidade Dorme é um jogo de dedução social onde jogadores assumem papéis secretos e tentam eliminar o time adversário através de estratégia, blefe e votação.
 
 ### Papéis
 
-**Distribuição automática por número de jogadores:**
-- **3 jogadores**: 1 assassino + 2 cidadãos
-- **5 jogadores**: 1 assassino + 1 anjo + 3 cidadãos  
-- **6+ jogadores**: 1 assassino + 1 anjo + 1 detetive + resto cidadãos
+- **🔪 Assassino**: Elimina um jogador a cada noite sem ser descoberto
+- **🔍 Detetive**: Investiga um jogador por noite para descobrir se é assassino
+- **😇 Anjo**: Protege um jogador da morte a cada noite
+- **👤 Cidadão**: Participa das discussões e votações para encontrar os assassinos
 
-**Papéis especiais:**
-- 🔪 **Assassino**: Escolhe uma vítima toda noite
-- 😇 **Anjo**: Salva um jogador toda noite
-- 🔍 **Detetive**: Investiga se um jogador é o assassino
-- 👤 **Cidadão**: Participa da votação para eliminar suspeitos
+### Como Jogar
 
-### Fluxo do Jogo
+1. **Lobby**: O host cria uma sala e configura a quantidade de cada papel
+2. **Distribuição**: Papéis são distribuídos aleatoriamente e mantidos em segredo
+3. **Noite**: Papéis especiais (Assassino, Detetive, Anjo) realizam suas ações
+4. **Dia**: Todos discutem no chat e tentam identificar suspeitos
+5. **Votação**: Jogadores votam para eliminar um suspeito
+6. **Vitória**: 
+   - Cidade vence eliminando todos os assassinos
+   - Assassinos vencem tomando controle da maioria
 
-1. **Espera**: Mínimo 3 jogadores para começar
-2. **Noite**: Assassino mata, anjo salva, detetive investiga
-3. **Dia**: Revelação dos resultados da noite
-4. **Votação**: A partir da 2ª rodada, todos votam para eliminar alguém
-5. Repete até:
-   - Assassino é eliminado → **Cidadãos vencem** 🎉
-   - Apenas 1 cidadão sobra → **Assassino vence** 😈
+## 🚀 Tecnologias
 
-## 🚀 Deploy no Render
+- **Backend**: Node.js + Express.js
+- **Tempo Real**: Socket.io
+- **Frontend**: HTML5 + CSS3 + JavaScript Vanilla
+- **Design**: Mobile-first, dark theme, responsivo
 
-### Passo 1: Criar conta no Render
-1. Acesse [render.com](https://render.com)
-2. Crie uma conta gratuita
-
-### Passo 2: Fazer upload do código
-Você tem 2 opções:
-
-#### Opção A: Via GitHub (Recomendado)
-1. Crie um repositório no GitHub
-2. Faça upload de todos os arquivos:
-   - `package.json`
-   - `server.js`
-   - `public/index.html`
-   - `public/game.js`
-
-3. No Render:
-   - Clique em "New +"
-   - Selecione "Web Service"
-   - Conecte seu repositório GitHub
-   - Configure:
-     - **Name**: cidade-dorme (ou qualquer nome)
-     - **Environment**: Node
-     - **Build Command**: `npm install`
-     - **Start Command**: `npm start`
-     - **Plan**: Free
-
-#### Opção B: Deploy direto
-1. No Render, clique em "New +"
-2. Selecione "Web Service"
-3. Selecione "Public Git repository"
-4. Cole a URL do repositório (se tiver) ou use deploy manual
-
-### Passo 3: Configurar
-- A porta já está configurada automaticamente (`process.env.PORT`)
-- O banco SQLite será criado automaticamente
-- Nenhuma variável de ambiente necessária
-
-### Passo 4: Deploy
-- Clique em "Create Web Service"
-- Aguarde o deploy (leva 2-3 minutos)
-- Sua URL será algo como: `https://cidade-dorme.onrender.com`
-
-## 💻 Testar Localmente
+## 📦 Instalação Local
 
 ```bash
-# Instalar dependências
+# 1. Clone o repositório
+git clone <seu-repo>
+cd cidade-dorme
+
+# 2. Instale as dependências
 npm install
 
-# Rodar servidor
+# 3. Inicie o servidor
 npm start
 
-# Acessar
-http://localhost:3000
+# 4. Acesse no navegador
+# http://localhost:3000
 ```
 
-## 🎯 Como Jogar
+## 🌐 Deploy no Render
 
-1. Acesse a URL do jogo
-2. Digite seu nick e clique em "Entrar no Jogo"
-3. Aguarde outros jogadores (mínimo 3)
-4. Qualquer jogador pode clicar em "Iniciar Jogo"
-5. Você receberá seu papel secreto
-6. Durante a noite:
-   - **Assassino**: Escolha quem matar
-   - **Anjo**: Escolha quem salvar
-   - **Detetive**: Escolha quem investigar
-7. Durante o dia: Use o chat para discutir
-8. Durante a votação: Vote em quem eliminar
+### Passo a Passo
 
-## 🛠️ Tecnologias
+1. **Crie uma conta no Render**
+   - Acesse https://render.com
+   - Faça cadastro gratuito
 
-- **Backend**: Node.js + Express + Socket.IO
-- **Database**: In-memory (state resets on server restart)
-- **Frontend**: HTML + CSS + JavaScript vanilla
-- **Deploy**: Render (free tier)
+2. **Conecte seu Repositório**
+   - Faça push do código para GitHub
+   - No Render, clique em "New +" → "Web Service"
+   - Conecte seu repositório
 
-## 📝 Recursos
+3. **Configure o Web Service**
+   ```
+   Name: cidade-dorme
+   Environment: Node
+   Build Command: npm install
+   Start Command: npm start
+   ```
 
-✅ Multiplayer em tempo real  
-✅ Chat integrado  
-✅ Distribuição automática de papéis  
-✅ Interface responsiva  
-✅ Sem necessidade de cadastro  
-✅ Totalmente gratuito  
+4. **Deploy Automático**
+   - Clique em "Create Web Service"
+   - Aguarde o build e deploy
+   - Acesse a URL fornecida pelo Render
 
-## ⚙️ Configurações Avançadas
+### Variáveis de Ambiente (Opcional)
 
-### Alterar Regras
-Edite o arquivo `server.js` na função `assignRoles()` para mudar a distribuição de papéis.
+```
+PORT=3000
+NODE_ENV=production
+```
 
-### Estado do Jogo
-O estado do jogo é mantido em memória. Quando o servidor reinicia, todos os jogos ativos são perdidos. Para produção com persistência, considere adicionar Redis ou PostgreSQL.
+## 📱 Uso
 
-### WebSocket
-O jogo usa Socket.IO para comunicação em tempo real. Certifique-se de que o Render suporta WebSockets (suporta no free tier).
+### Criar Sala
 
-## 🐛 Troubleshooting
+1. Digite seu nome
+2. Clique em "Criar Sala"
+3. Compartilhe o código da sala com amigos
 
-**Problema**: Jogadores não conseguem se conectar  
-**Solução**: Verifique se o deploy foi concluído e se a URL está correta
+### Entrar na Sala
 
-**Problema**: Jogo não inicia  
-**Solução**: Precisa de mínimo 3 jogadores conectados
+1. Digite seu nome
+2. Digite o código da sala
+3. Clique em "Entrar"
 
-**Problema**: WebSocket não conecta  
-**Solução**: Render suporta WebSocket, mas pode levar 1-2 min após deploy
+### Configurar Jogo (Host)
+
+1. Ajuste quantidade de cada papel
+2. Aguarde jogadores entrarem (mínimo 4)
+3. Clique em "Iniciar Jogo"
+
+### Durante o Jogo
+
+- **Noite**: Papéis especiais escolhem suas ações
+- **Dia**: Todos podem usar o chat para discutir
+- **Votação**: Escolha quem eliminar
+- **Espectador**: Jogadores eliminados podem assistir
+
+## 🎨 Características
+
+- ✅ Design mobile-first responsivo
+- ✅ Dark theme elegante
+- ✅ Sincronização em tempo real
+- ✅ Sem necessidade de narrador
+- ✅ Suporta 4-12 jogadores
+- ✅ Chat integrado
+- ✅ Feedback visual e animações
+- ✅ Sistema anti-trapaça básico
+- ✅ Desconexão tratada
+- ✅ Interface touch-optimized
+
+## 🔧 Estrutura do Projeto
+
+```
+cidade-dorme/
+├── server.js           # Servidor Express + Socket.io
+├── package.json        # Dependências e scripts
+├── public/
+│   ├── index.html     # Estrutura HTML
+│   ├── style.css      # Estilos e design
+│   └── game.js        # Lógica do cliente
+└── README.md          # Este arquivo
+```
+
+## 🎯 Recursos Implementados
+
+### Backend
+- ✅ Sistema de salas com códigos únicos
+- ✅ Gerenciamento de estado do jogo em memória
+- ✅ Distribuição aleatória de papéis
+- ✅ Lógica de noite (assassino, detetive, anjo)
+- ✅ Sistema de votação
+- ✅ Verificação de condições de vitória
+- ✅ Chat em tempo real
+- ✅ Tratamento de desconexão
+
+### Frontend
+- ✅ 5 telas principais (Home, Lobby, Papel, Jogo, Fim)
+- ✅ Interface mobile-first
+- ✅ Design único com dark theme
+- ✅ Animações suaves
+- ✅ Feedback visual para ações
+- ✅ Chat com scroll automático
+- ✅ Modal de investigação
+- ✅ Toast de notificações
+- ✅ Indicadores de progresso
+
+### Regras de Jogo
+- ✅ Noite: ações simultâneas dos papéis especiais
+- ✅ Proteção do anjo previne morte
+- ✅ Investigação do detetive é privada
+- ✅ Dia: chat livre entre jogadores vivos
+- ✅ Votação: eliminação do mais votado
+- ✅ Mortos: viram espectadores
+- ✅ Vitória: cidade ou assassinos
+
+## 🐛 Debugging
+
+### Problemas Comuns
+
+1. **Porta já em uso**
+   ```bash
+   # Altere a porta em server.js ou use variável de ambiente
+   PORT=3001 npm start
+   ```
+
+2. **WebSocket não conecta**
+   - Verifique se o firewall permite conexões
+   - Confirme que a porta está aberta
+   - No Render, use HTTPS (wss://)
+
+3. **Jogadores não aparecem**
+   - Verifique console do navegador (F12)
+   - Confirme conexão com Socket.io
+   - Teste com outro navegador
+
+## 📈 Melhorias Futuras
+
+- [ ] Banco de dados para histórico de partidas
+- [ ] Sistema de autenticação
+- [ ] Ranking de jogadores
+- [ ] Novos papéis (Médico, Xerife, etc)
+- [ ] Sons e efeitos sonoros
+- [ ] Modo torneio
+- [ ] Estatísticas detalhadas
+- [ ] Replay de partidas
+- [ ] Temas personalizáveis
+- [ ] Idiomas múltiplos
+
+## 🤝 Contribuindo
+
+Contribuições são bem-vindas! Sinta-se livre para:
+
+1. Fork o projeto
+2. Criar uma branch (`git checkout -b feature/NovaFuncionalidade`)
+3. Commit suas mudanças (`git commit -m 'Adiciona nova funcionalidade'`)
+4. Push para a branch (`git push origin feature/NovaFuncionalidade`)
+5. Abrir um Pull Request
 
 ## 📄 Licença
 
-MIT - Livre para uso e modificação
+Este projeto está sob licença MIT. Veja o arquivo LICENSE para mais detalhes.
+
+## 👥 Créditos
+
+Desenvolvido como projeto técnico de demonstração de aplicação web real-time mobile-first.
+
+## 📞 Suporte
+
+Para problemas, dúvidas ou sugestões, abra uma issue no repositório.
 
 ---
 
-Divirta-se jogando! 🎉
+**Divirta-se jogando Cidade Dorme! 🌙🔪**

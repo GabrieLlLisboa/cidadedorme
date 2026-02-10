@@ -3,135 +3,223 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Cidade Dorme</title>
+  <meta name="description" content="Jogo de dedução social Cidade Dorme - Jogue em tempo real com seus amigos">
+  <meta name="theme-color" content="#0a0e17">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Cidade Dorme">
+  <title>Cidade Dorme - Jogo de Mistério</title>
+  <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&family=Manrope:wght@400;500;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
-  <div class="container">
-    <!-- Login Screen -->
-    <div id="loginScreen">
-      <div class="login-card">
-        <h1>🌙 Cidade Dorme 🌙</h1>
-        <p class="subtitle">Um jogo de mistério e dedução</p>
-        <input type="text" id="nickInput" placeholder="Digite seu nome" maxlength="20" autocomplete="off">
-        <button onclick="joinGame()" class="btn-primary">Entrar no Jogo</button>
-        <div id="loginMessage" class="message hidden"></div>
+  <!-- Tela de Entrada -->
+  <div id="home-screen" class="screen active">
+    <div class="moon-bg"></div>
+    <div class="container">
+      <div class="logo-container">
+        <div class="moon-icon">🌙</div>
+        <h1 class="game-title">Cidade<br>Dorme</h1>
+        <p class="game-subtitle">Um jogo de mistério e dedução</p>
+      </div>
+      
+      <div class="card">
+        <input type="text" id="player-name-input" placeholder="Seu nome" maxlength="20" autocomplete="off">
+        
+        <div class="button-group">
+          <button id="create-room-btn" class="btn btn-primary">
+            <span class="btn-icon">+</span>
+            <span class="btn-text">Criar Sala</span>
+          </button>
+          
+          <div class="or-divider">
+            <span>ou</span>
+          </div>
+          
+          <div class="join-room-group">
+            <input type="text" id="room-code-input" placeholder="Código da sala" maxlength="6" autocomplete="off">
+            <button id="join-room-btn" class="btn btn-secondary">Entrar</button>
+          </div>
+        </div>
+      </div>
+      
+      <div class="footer-info">
+        <p>4-12 jogadores • Tempo real</p>
       </div>
     </div>
-    
-    <!-- Game Screen -->
-    <div id="gameScreen" class="hidden">
-      <!-- Header Info -->
-      <div class="game-header">
-        <div class="header-top">
-          <h1>🌙 Cidade Dorme</h1>
-          <button id="chatToggle" onclick="toggleChat()" class="btn-chat">
-            💬 <span id="chatBadge" class="hidden">0</span>
-          </button>
+  </div>
+
+  <!-- Tela de Lobby -->
+  <div id="lobby-screen" class="screen">
+    <div class="container">
+      <div class="header">
+        <div class="room-info">
+          <h2>Sala <span id="room-code-display" class="room-code"></span></h2>
+          <button id="copy-code-btn" class="btn-icon-only">📋</button>
         </div>
-        <div class="info-bar">
-          <span class="info-item">👤 <strong id="yourNick"></strong></span>
-          <span class="info-item">🔢 Rodada <strong id="currentRound">0</strong></span>
-          <span class="info-item phase-indicator">
-            <strong id="currentPhase">Aguardando</strong>
-          </span>
-        </div>
+        <button id="leave-lobby-btn" class="btn-text-only">Sair</button>
       </div>
 
-      <!-- Full Screen Overlays -->
-      <div id="gameStartOverlay" class="fullscreen-overlay hidden">
-        <div class="overlay-content">
-          <h2 class="pulse">Começando o jogo...</h2>
-          <div class="loading-dots">
-            <span></span><span></span><span></span>
+      <div class="players-section">
+        <h3 class="section-title">Jogadores (<span id="player-count">0</span>)</h3>
+        <div id="players-list" class="players-list"></div>
+      </div>
+
+      <div id="host-controls" class="host-controls" style="display: none;">
+        <h3 class="section-title">Configuração de Papéis</h3>
+        <div class="card">
+          <div class="role-config">
+            <div class="role-item">
+              <label>🔪 Assassinos</label>
+              <input type="number" id="assassino-count" min="1" max="3" value="1">
+            </div>
+            <div class="role-item">
+              <label>🔍 Detetives</label>
+              <input type="number" id="detetive-count" min="0" max="2" value="1">
+            </div>
+            <div class="role-item">
+              <label>😇 Anjos</label>
+              <input type="number" id="anjo-count" min="0" max="2" value="1">
+            </div>
+            <div class="role-info">
+              <span>Cidadãos: <strong id="cidadao-count">0</strong></span>
+            </div>
           </div>
         </div>
+
+        <button id="start-game-btn" class="btn btn-primary btn-large">Iniciar Jogo</button>
       </div>
 
-      <div id="roleRevealOverlay" class="fullscreen-overlay hidden">
-        <div class="overlay-content">
-          <h2>Seu papel é:</h2>
-          <div id="roleDisplay" class="role-display"></div>
-          <p id="roleDescription" class="role-description"></p>
-        </div>
+      <div id="waiting-host" style="display: none;">
+        <p class="waiting-message">Aguardando o host iniciar o jogo...</p>
       </div>
+    </div>
+  </div>
 
-      <div id="nightOverlay" class="fullscreen-overlay night-overlay hidden">
-        <div class="overlay-content">
-          <h2 class="night-title">🌙 A cidade dorme... 🌙</h2>
-          <p class="night-subtitle">Aguarde enquanto as ações noturnas acontecem</p>
-        </div>
+  <!-- Tela de Revelação do Papel -->
+  <div id="role-screen" class="screen">
+    <div class="container role-reveal-container">
+      <div class="role-card" id="role-card">
+        <div class="role-icon" id="role-icon"></div>
+        <h2 class="role-name" id="role-name"></h2>
+        <p class="role-description" id="role-description"></p>
+        <button id="role-understood-btn" class="btn btn-primary">Entendi</button>
       </div>
+    </div>
+  </div>
 
-      <div id="newRoundOverlay" class="fullscreen-overlay hidden">
-        <div class="overlay-content">
-          <h2 class="pulse">Começando Rodada <span id="newRoundNumber">2</span>...</h2>
-          <div class="loading-dots">
-            <span></span><span></span><span></span>
-          </div>
-        </div>
+  <!-- Tela do Jogo -->
+  <div id="game-screen" class="screen">
+    <div class="game-header">
+      <div class="phase-indicator" id="phase-indicator">
+        <span class="phase-icon" id="phase-icon">🌙</span>
+        <span class="phase-text" id="phase-text">Noite 1</span>
       </div>
+      <div class="alive-count" id="alive-count">8 vivos</div>
+    </div>
 
-      <!-- Role Info (compact) -->
-      <div id="roleInfo" class="role-info hidden">
-        <span id="yourRole"></span>
-      </div>
-      
-      <!-- Main Content -->
-      <div id="mainContent" class="main-content">
-        <!-- Phase Message -->
-        <div id="phaseMessage" class="message hidden"></div>
+    <!-- Ações Noturnas -->
+    <div id="night-action-panel" class="action-panel" style="display: none;">
+      <div class="container">
+        <h3 class="action-title" id="action-title">Escolha sua ação</h3>
+        <p class="action-subtitle" id="action-subtitle"></p>
         
-        <!-- Players List -->
-        <div class="card players-card">
-          <h3>👥 Jogadores (<span id="aliveCount">0</span>/<span id="playerCount">0</span> vivos)</h3>
-          <div id="roleDistributionInfo" class="role-distribution-info hidden"></div>
-          <div id="playersList" class="players-grid"></div>
-          <button id="startButton" onclick="startGame()" class="btn-start hidden">
-            🎮 Iniciar Jogo (mínimo 3 jogadores)
-          </button>
-        </div>
+        <div id="target-list" class="target-list"></div>
         
-        <!-- Actions Panel -->
-        <div id="actionsPanel" class="actions-panel hidden">
-          <h3 id="actionsTitle" class="actions-title">Ações</h3>
-          <div id="actionButtons" class="action-buttons"></div>
+        <div id="action-confirmed" class="action-confirmed" style="display: none;">
+          <div class="check-icon">✓</div>
+          <p>Ação confirmada</p>
         </div>
+      </div>
+    </div>
 
-        <!-- Day Discussion Timer -->
-        <div id="discussionTimer" class="discussion-timer hidden">
-          <div class="timer-icon">⏱️</div>
-          <div class="timer-content">
-            <p>Tempo para discussão</p>
-            <div class="timer-display"><span id="timerSeconds">10</span>s</div>
+    <!-- Fase do Dia / Chat -->
+    <div id="day-panel" class="day-panel" style="display: none;">
+      <div class="container">
+        <div id="night-result" class="night-result"></div>
+        
+        <div class="chat-container">
+          <div id="chat-messages" class="chat-messages"></div>
+          
+          <div class="chat-input-container">
+            <input type="text" id="chat-input" placeholder="Digite sua mensagem..." maxlength="200" autocomplete="off">
+            <button id="send-message-btn" class="btn-icon-only">📤</button>
           </div>
         </div>
 
-        <!-- Game End Screen -->
-        <div id="gameEndScreen" class="game-end hidden">
-          <div class="end-icon" id="endIcon">🎉</div>
-          <h2 id="endTitle"></h2>
-          <p id="endMessage"></p>
-          <div id="rolesReveal" class="roles-reveal"></div>
-          <button onclick="location.reload()" class="btn-primary">Jogar Novamente</button>
+        <button id="start-voting-btn" class="btn btn-primary btn-large" style="display: none;">
+          Iniciar Votação
+        </button>
+      </div>
+    </div>
+
+    <!-- Votação -->
+    <div id="voting-panel" class="action-panel" style="display: none;">
+      <div class="container">
+        <h3 class="action-title">Votação</h3>
+        <p class="action-subtitle">Escolha quem deve ser eliminado</p>
+        
+        <div id="vote-progress" class="vote-progress">
+          <span id="votes-count">0</span>/<span id="votes-total">0</span> votos
+        </div>
+        
+        <div id="vote-list" class="target-list"></div>
+        
+        <div id="vote-confirmed" class="action-confirmed" style="display: none;">
+          <div class="check-icon">✓</div>
+          <p>Voto confirmado</p>
         </div>
       </div>
-      
-      <!-- Chat Panel (Sliding) -->
-      <div id="chatPanel" class="chat-panel">
-        <div class="chat-header">
-          <h3>💬 Chat</h3>
-          <button onclick="toggleChat()" class="btn-close">✕</button>
-        </div>
-        <div class="chat-messages" id="chatMessages"></div>
-        <div class="chat-input-container">
-          <input type="text" id="chatInput" placeholder="Digite sua mensagem..." maxlength="200" autocomplete="off">
-          <button onclick="sendMessage()" class="btn-send">Enviar</button>
+    </div>
+
+    <!-- Espectador (Jogador Morto) -->
+    <div id="spectator-panel" class="spectator-panel" style="display: none;">
+      <div class="container">
+        <div class="spectator-message">
+          <h3>☠️ Você foi eliminado</h3>
+          <p>Continue assistindo o jogo até o final</p>
+          <div class="your-role">
+            <span>Seu papel era:</span>
+            <strong id="dead-role"></strong>
+          </div>
         </div>
       </div>
     </div>
   </div>
-  
+
+  <!-- Tela de Fim de Jogo -->
+  <div id="game-over-screen" class="screen">
+    <div class="container">
+      <div class="game-over-card">
+        <div class="winner-badge" id="winner-badge"></div>
+        <h2 id="winner-title" class="winner-title"></h2>
+        <p id="winner-message" class="winner-message"></p>
+        
+        <div class="final-players">
+          <h3>Revelação dos Papéis</h3>
+          <div id="final-players-list" class="final-players-list"></div>
+        </div>
+
+        <button id="back-to-home-btn" class="btn btn-primary btn-large">Nova Partida</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Investigação -->
+  <div id="investigation-modal" class="modal">
+    <div class="modal-content">
+      <h3>Resultado da Investigação</h3>
+      <p id="investigation-result"></p>
+      <button id="close-investigation-btn" class="btn btn-secondary">OK</button>
+    </div>
+  </div>
+
+  <!-- Toast de Notificação -->
+  <div id="toast" class="toast"></div>
+
   <script src="/socket.io/socket.io.js"></script>
   <script src="game.js"></script>
 </body>

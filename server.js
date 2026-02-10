@@ -1,49 +1,52 @@
 const express = require('express');
-const { createServer } = require('http');
-const { Server } = require('socket.io');
+const app = express();
+const http = require('http').createServer(app);
+const io = require('socket.io')(http);
 const path = require('path');
 
-const app = express();
-const httpServer = createServer(app);
-const io = new Server(httpServer);
+// Middleware
+app.use(express.static('public'));
+app.use(express.json());
 
-// Game state (in-memory, resets on server restart)
-let gameState = {
-  players: new Map(), // socketId -> {nick, role, alive, voted}
-  phase: 'waiting', // waiting, night, day, voting, ended
-  round: 0,
-  nightActions: {
-    kill: null,
-    save: null,
-    investigate: null
-  },
-  votes: new Map(),
-  hasVotingStarted: false
+// Estado do jogo em memória
+const rooms = new Map();
+
+// Configurações
+const ROLES = {
+  ASSASSINO: 'assassino',
+  DETETIVE: 'detetive',
+  ANJO: 'anjo',
+  CIDADAO: 'cidadao'
 };
 
-// Serve static files
-app.use(express.static('public'));
+const GAME_STATES = {
+  LOBBY: 'lobby',
+  NIGHT: 'night',
+  DAY: 'day',
+  VOTING: 'voting',
+  GAME_OVER: 'game_over'
+};
 
-// Game logic functions
-function assignRoles(playerCount) {
-  const roles = ['cidadao'];
+// Gerar código único de sala
+function generateRoomCode() {
+  return Math.random().toString(36).substring(2, 8).toUpperCase();
+}
+
+// Distribuir papéis aleatoriamente
+function distributeRoles(players, roleConfig) {
+  const roles = [];
   
-  if (playerCount >= 3) {
-    roles.push('assassino');
-  }
-  if (playerCount >= 5) {
-    roles.push('anjo');
-  }
-  if (playerCount >= 6) {
-    roles.push('detetive');
-  }
+  // Adicionar papéis conforme configuração
+  for (let i = 0; i < roleConfig.assassino; i++) roles.push(ROLES.ASSASSINO);
+  for (let i = 0; i < roleConfig.detetive; i++) roles.push(ROLES.DETETIVE);
+  for (let i = 0; i < roleConfig.anjo; i++) roles.push(ROLES.ANJO);
   
-  // Fill rest with citizens
-  while (roles.length < playerCount) {
-    roles.push('cidadao');
-  }
+  // Preencher restante com cidadãos
+  const totalSpecialRoles = roleConfig.assassino + roleConfig.detetive + roleConfig.anjo;
+  const cidadaosNeeded = players.length - totalSpecialRoles;
+  for (let i = 0; i < cidadaosNeeded; i++) roles.push(ROLES.CIDADAO);
   
-  // Shuffle
+  // Embaralhar
   for (let i = roles.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [roles[i], roles[j]] = [roles[j], roles[i]];
@@ -52,343 +55,466 @@ function assignRoles(playerCount) {
   return roles;
 }
 
-function getAlivePlayers() {
-  return Array.from(gameState.players.values()).filter(p => p.alive);
-}
-
-function checkWinCondition() {
-  const alive = getAlivePlayers();
-  const assassin = alive.find(p => p.role === 'assassino');
-  const citizens = alive.filter(p => p.role !== 'assassino');
+// Verificar condições de vitória
+function checkWinCondition(room) {
+  const alivePlayers = room.players.filter(p => p.isAlive);
+  const aliveAssassins = alivePlayers.filter(p => p.role === ROLES.ASSASSINO);
+  const aliveCitizens = alivePlayers.filter(p => p.role !== ROLES.ASSASSINO);
   
-  if (!assassin) {
-    return 'citizens';
+  if (aliveAssassins.length === 0) {
+    return { winner: 'cidade', message: 'A Cidade venceu! Todos os assassinos foram eliminados.' };
   }
-  if (citizens.length <= 1) {
-    return 'assassin';
+  
+  if (aliveAssassins.length >= aliveCitizens.length) {
+    return { winner: 'assassinos', message: 'Os Assassinos venceram! Eles tomaram o controle da cidade.' };
   }
+  
   return null;
 }
 
-function resetNightActions() {
-  gameState.nightActions = {
-    kill: null,
-    save: null,
-    investigate: null
-  };
-}
-
-function startGame() {
-  if (gameState.players.size < 3) {
-    io.emit('error', { message: 'Mínimo 3 jogadores para começar' });
-    return;
-  }
+// Socket.io
+io.on('connection', (socket) => {
+  console.log('Novo jogador conectado:', socket.id);
   
-  const roles = assignRoles(gameState.players.size);
-  let index = 0;
-  
-  gameState.players.forEach((player, socketId) => {
-    player.role = roles[index++];
-    player.alive = true;
-    player.voted = false;
-  });
-  
-  gameState.phase = 'night';
-  gameState.round = 1;
-  gameState.hasVotingStarted = false;
-  resetNightActions();
-  
-  // Send roles to players
-  gameState.players.forEach((player, socketId) => {
-    io.to(socketId).emit('roleAssigned', { role: player.role });
-  });
-  
-  broadcastGameState();
-  io.emit('phaseChange', { phase: 'night', round: 1, message: '🌙 A cidade dorme... Jogadores especiais, façam suas ações!' });
-}
-
-function processNightPhase() {
-  const hasAssassin = Array.from(gameState.players.values()).some(p => p.role === 'assassino' && p.alive);
-  const hasAnjo = Array.from(gameState.players.values()).some(p => p.role === 'anjo' && p.alive);
-  const hasDetetive = Array.from(gameState.players.values()).some(p => p.role === 'detetive' && p.alive);
-  
-  const requiredActions = hasAssassin ? 1 : 0;
-  const optionalActions = (hasAnjo ? 1 : 0) + (hasDetetive ? 1 : 0);
-  
-  const completedActions = 
-    (gameState.nightActions.kill !== null ? 1 : 0) +
-    (hasAnjo && gameState.nightActions.save !== null ? 1 : 0) +
-    (hasDetetive && gameState.nightActions.investigate !== null ? 1 : 0);
-  
-  // Night ends when assassin acted (and others if they exist)
-  if (hasAssassin && gameState.nightActions.kill === null) return;
-  
-  // Process results
-  const killed = gameState.nightActions.kill;
-  const saved = gameState.nightActions.save;
-  const investigated = gameState.nightActions.investigate;
-  
-  let message = '☀️ A cidade acorda!\n\n';
-  let deaths = [];
-  
-  if (killed && killed !== saved) {
-    const victim = Array.from(gameState.players.entries()).find(([_, p]) => p.nick === killed);
-    if (victim) {
-      victim[1].alive = false;
-      deaths.push(killed);
-      message += `💀 ${killed} foi morto(a) durante a noite!\n`;
-    }
-  } else if (killed && killed === saved) {
-    message += `✨ O anjo salvou ${killed}!\n`;
-  } else if (!killed) {
-    message += `😴 Ninguém morreu esta noite.\n`;
-  }
-  
-  if (investigated && hasDetetive) {
-    const target = Array.from(gameState.players.values()).find(p => p.nick === investigated);
-    const detective = Array.from(gameState.players.entries()).find(([_, p]) => p.role === 'detetive');
+  // Criar sala
+  socket.on('create_room', (data) => {
+    const roomCode = generateRoomCode();
+    const room = {
+      code: roomCode,
+      host: socket.id,
+      players: [{
+        id: socket.id,
+        name: data.playerName,
+        role: null,
+        isAlive: true,
+        isReady: false,
+        hasVoted: false,
+        hasActed: false
+      }],
+      state: GAME_STATES.LOBBY,
+      roleConfig: {
+        assassino: 1,
+        detetive: 1,
+        anjo: 1
+      },
+      nightActions: {},
+      votes: {},
+      dayTimer: 60,
+      nightTimer: 30,
+      chatEnabled: true,
+      currentDay: 0,
+      history: []
+    };
     
-    if (target && detective) {
-      const isAssassin = target.role === 'assassino';
-      const result = isAssassin ? 'SIM, é o assassino!' : 'NÃO é o assassino.';
-      io.to(detective[0]).emit('investigationResult', { 
-        target: investigated, 
-        isAssassin,
-        message: `🔍 Investigação: ${investigated} - ${result}`
+    rooms.set(roomCode, room);
+    socket.join(roomCode);
+    socket.emit('room_created', { roomCode, room });
+    console.log('Sala criada:', roomCode);
+  });
+  
+  // Entrar na sala
+  socket.on('join_room', (data) => {
+    const room = rooms.get(data.roomCode);
+    
+    if (!room) {
+      socket.emit('error', { message: 'Sala não encontrada' });
+      return;
+    }
+    
+    if (room.state !== GAME_STATES.LOBBY) {
+      socket.emit('error', { message: 'O jogo já começou' });
+      return;
+    }
+    
+    const existingPlayer = room.players.find(p => p.id === socket.id);
+    if (!existingPlayer) {
+      room.players.push({
+        id: socket.id,
+        name: data.playerName,
+        role: null,
+        isAlive: true,
+        isReady: false,
+        hasVoted: false,
+        hasActed: false
       });
     }
-  }
-  
-  const winner = checkWinCondition();
-  if (winner) {
-    endGame(winner);
-    return;
-  }
-  
-  gameState.phase = gameState.round > 1 || deaths.length > 0 ? 'voting' : 'day';
-  gameState.votes.clear();
-  gameState.players.forEach(p => p.voted = false);
-  
-  broadcastGameState();
-  io.emit('phaseChange', { 
-    phase: gameState.phase, 
-    round: gameState.round,
-    message,
-    canVote: gameState.phase === 'voting'
-  });
-}
-
-function processVoting() {
-  const alivePlayers = getAlivePlayers();
-  const allVoted = alivePlayers.every(p => p.voted);
-  
-  if (!allVoted) return;
-  
-  // Count votes
-  const voteCounts = new Map();
-  gameState.votes.forEach((target) => {
-    voteCounts.set(target, (voteCounts.get(target) || 0) + 1);
+    
+    socket.join(data.roomCode);
+    io.to(data.roomCode).emit('room_updated', { room });
+    console.log(`${data.playerName} entrou na sala ${data.roomCode}`);
   });
   
-  let maxVotes = 0;
-  let eliminated = null;
-  
-  voteCounts.forEach((count, player) => {
-    if (count > maxVotes) {
-      maxVotes = count;
-      eliminated = player;
+  // Atualizar configuração de papéis
+  socket.on('update_roles', (data) => {
+    const room = rooms.get(data.roomCode);
+    
+    if (!room || room.host !== socket.id) {
+      socket.emit('error', { message: 'Apenas o host pode alterar configurações' });
+      return;
     }
+    
+    room.roleConfig = data.roleConfig;
+    io.to(data.roomCode).emit('room_updated', { room });
   });
   
-  let message = '📊 Resultado da votação:\n\n';
-  
-  voteCounts.forEach((count, player) => {
-    message += `${player}: ${count} voto(s)\n`;
-  });
-  
-  if (eliminated) {
-    const victim = Array.from(gameState.players.entries()).find(([_, p]) => p.nick === eliminated);
-    if (victim) {
-      victim[1].alive = false;
-      message += `\n⚖️ ${eliminated} foi eliminado(a) pela votação!`;
+  // Iniciar jogo
+  socket.on('start_game', (data) => {
+    const room = rooms.get(data.roomCode);
+    
+    if (!room || room.host !== socket.id) {
+      socket.emit('error', { message: 'Apenas o host pode iniciar o jogo' });
+      return;
+    }
+    
+    const totalRoles = room.roleConfig.assassino + room.roleConfig.detetive + room.roleConfig.anjo;
+    if (room.players.length < totalRoles + 1) {
+      socket.emit('error', { 
+        message: `Jogadores insuficientes. Necessário pelo menos ${totalRoles + 1} jogadores.` 
+      });
+      return;
+    }
+    
+    // Distribuir papéis
+    const roles = distributeRoles(room.players, room.roleConfig);
+    room.players.forEach((player, index) => {
+      player.role = roles[index];
+      player.isAlive = true;
       
-      const winner = checkWinCondition();
-      if (winner) {
-        io.emit('votingResult', { message });
-        setTimeout(() => endGame(winner), 3000);
-        return;
-      }
-    }
-  } else {
-    message += '\n🤝 Empate! Ninguém foi eliminado.';
-  }
-  
-  gameState.round++;
-  gameState.phase = 'night';
-  gameState.votes.clear();
-  gameState.players.forEach(p => p.voted = false);
-  resetNightActions();
-  
-  io.emit('votingResult', { message });
-  
-  setTimeout(() => {
-    broadcastGameState();
-    io.emit('phaseChange', { 
-      phase: 'night', 
-      round: gameState.round,
-      message: `🌙 Noite ${gameState.round}... A cidade dorme novamente.` 
-    });
-  }, 5000);
-}
-
-function endGame(winner) {
-  gameState.phase = 'ended';
-  
-  const roles = {};
-  gameState.players.forEach((player) => {
-    roles[player.nick] = player.role;
-  });
-  
-  const message = winner === 'citizens' 
-    ? '🎉 Os cidadãos venceram! O assassino foi eliminado!' 
-    : '😈 O assassino venceu! A cidade foi dominada!';
-  
-  io.emit('gameEnd', { winner, message, roles });
-}
-
-function broadcastGameState() {
-  const players = Array.from(gameState.players.values()).map(p => ({
-    nick: p.nick,
-    alive: p.alive,
-    voted: p.voted
-  }));
-  
-  io.emit('gameState', {
-    players,
-    phase: gameState.phase,
-    round: gameState.round,
-    playerCount: players.length,
-    aliveCount: players.filter(p => p.alive).length
-  });
-}
-
-// Socket.IO events
-io.on('connection', (socket) => {
-  console.log('Player connected:', socket.id);
-  
-  socket.on('joinGame', (data) => {
-    const { nick } = data;
-    
-    if (!nick || nick.trim().length === 0) {
-      socket.emit('error', { message: 'Nick inválido' });
-      return;
-    }
-    
-    // Check if nick already exists
-    const nickExists = Array.from(gameState.players.values()).some(p => p.nick === nick);
-    if (nickExists) {
-      socket.emit('error', { message: 'Nick já está em uso' });
-      return;
-    }
-    
-    if (gameState.phase !== 'waiting') {
-      socket.emit('error', { message: 'Jogo já começou' });
-      return;
-    }
-    
-    gameState.players.set(socket.id, {
-      nick: nick.trim(),
-      role: null,
-      alive: true,
-      voted: false
+      // Enviar papel secreto para cada jogador
+      io.to(player.id).emit('role_assigned', { 
+        role: player.role,
+        roleDescription: getRoleDescription(player.role)
+      });
     });
     
-    socket.emit('joinedGame', { nick: nick.trim() });
-    broadcastGameState();
-    io.emit('playerJoined', { nick: nick.trim(), count: gameState.players.size });
+    room.state = GAME_STATES.NIGHT;
+    room.currentDay = 1;
+    room.nightActions = {};
+    
+    io.to(data.roomCode).emit('game_started', { room });
+    io.to(data.roomCode).emit('phase_change', { 
+      phase: GAME_STATES.NIGHT,
+      day: room.currentDay
+    });
+    
+    console.log(`Jogo iniciado na sala ${data.roomCode}`);
   });
   
-  socket.on('startGame', () => {
-    if (gameState.phase === 'waiting') {
-      startGame();
+  // Ação noturna
+  socket.on('night_action', (data) => {
+    const room = rooms.get(data.roomCode);
+    
+    if (!room || room.state !== GAME_STATES.NIGHT) {
+      socket.emit('error', { message: 'Ações noturnas só podem ser feitas à noite' });
+      return;
+    }
+    
+    const player = room.players.find(p => p.id === socket.id);
+    
+    if (!player || !player.isAlive) {
+      socket.emit('error', { message: 'Você não pode agir' });
+      return;
+    }
+    
+    if (player.hasActed) {
+      socket.emit('error', { message: 'Você já realizou sua ação esta noite' });
+      return;
+    }
+    
+    room.nightActions[player.role] = {
+      playerId: socket.id,
+      targetId: data.targetId
+    };
+    
+    player.hasActed = true;
+    socket.emit('action_confirmed', { message: 'Ação realizada' });
+    
+    // Verificar se todos agiram
+    const aliveSpecialRoles = room.players.filter(p => 
+      p.isAlive && [ROLES.ASSASSINO, ROLES.DETETIVE, ROLES.ANJO].includes(p.role)
+    );
+    
+    const actedPlayers = aliveSpecialRoles.filter(p => p.hasActed);
+    
+    if (actedPlayers.length === aliveSpecialRoles.length) {
+      resolveNight(room, data.roomCode);
     }
   });
   
-  socket.on('nightAction', (data) => {
-    if (gameState.phase !== 'night') return;
-    
-    const player = gameState.players.get(socket.id);
-    if (!player || !player.alive) return;
-    
-    const { action, target } = data;
-    
-    if (action === 'kill' && player.role === 'assassino') {
-      gameState.nightActions.kill = target;
-    } else if (action === 'save' && player.role === 'anjo') {
-      gameState.nightActions.save = target;
-    } else if (action === 'investigate' && player.role === 'detetive') {
-      gameState.nightActions.investigate = target;
-    }
-    
-    socket.emit('actionConfirmed', { action, target });
-    processNightPhase();
-  });
-  
+  // Votar
   socket.on('vote', (data) => {
-    if (gameState.phase !== 'voting') return;
+    const room = rooms.get(data.roomCode);
     
-    const player = gameState.players.get(socket.id);
-    if (!player || !player.alive || player.voted) return;
+    if (!room || room.state !== GAME_STATES.VOTING) {
+      socket.emit('error', { message: 'Votação não está aberta' });
+      return;
+    }
     
-    const { target } = data;
-    const targetPlayer = Array.from(gameState.players.values()).find(p => p.nick === target && p.alive);
+    const player = room.players.find(p => p.id === socket.id);
     
-    if (!targetPlayer) return;
+    if (!player || !player.isAlive) {
+      socket.emit('error', { message: 'Você não pode votar' });
+      return;
+    }
     
-    gameState.votes.set(socket.id, target);
-    player.voted = true;
+    if (player.hasVoted) {
+      socket.emit('error', { message: 'Você já votou' });
+      return;
+    }
     
-    socket.emit('voteConfirmed', { target });
-    broadcastGameState();
+    room.votes[socket.id] = data.targetId;
+    player.hasVoted = true;
     
-    processVoting();
+    socket.emit('vote_confirmed', { message: 'Voto registrado' });
+    
+    // Verificar se todos votaram
+    const alivePlayers = room.players.filter(p => p.isAlive);
+    const votedPlayers = alivePlayers.filter(p => p.hasVoted);
+    
+    if (votedPlayers.length === alivePlayers.length) {
+      resolveVoting(room, data.roomCode);
+    } else {
+      io.to(data.roomCode).emit('vote_update', {
+        votesCount: votedPlayers.length,
+        totalVotes: alivePlayers.length
+      });
+    }
   });
   
-  socket.on('chatMessage', (data) => {
-    const player = gameState.players.get(socket.id);
+  // Chat
+  socket.on('send_message', (data) => {
+    const room = rooms.get(data.roomCode);
+    
+    if (!room) return;
+    
+    const player = room.players.find(p => p.id === socket.id);
+    
     if (!player) return;
     
-    const { message } = data;
-    io.emit('chatMessage', { 
-      nick: player.nick, 
-      message: message.trim(),
-      timestamp: new Date().toISOString()
+    // Apenas jogadores vivos podem falar durante o dia
+    if (room.state === GAME_STATES.DAY && !player.isAlive) {
+      socket.emit('error', { message: 'Jogadores mortos não podem falar' });
+      return;
+    }
+    
+    io.to(data.roomCode).emit('new_message', {
+      playerName: player.name,
+      message: data.message,
+      timestamp: Date.now(),
+      isAlive: player.isAlive
     });
   });
   
+  // Avançar para votação
+  socket.on('start_voting', (data) => {
+    const room = rooms.get(data.roomCode);
+    
+    if (!room || room.state !== GAME_STATES.DAY) return;
+    
+    room.state = GAME_STATES.VOTING;
+    room.votes = {};
+    room.players.forEach(p => p.hasVoted = false);
+    
+    io.to(data.roomCode).emit('phase_change', { 
+      phase: GAME_STATES.VOTING,
+      day: room.currentDay
+    });
+  });
+  
+  // Desconexão
   socket.on('disconnect', () => {
-    const player = gameState.players.get(socket.id);
-    if (player) {
-      gameState.players.delete(socket.id);
-      io.emit('playerLeft', { nick: player.nick, count: gameState.players.size });
-      broadcastGameState();
+    console.log('Jogador desconectou:', socket.id);
+    
+    // Encontrar sala do jogador
+    for (const [roomCode, room] of rooms.entries()) {
+      const playerIndex = room.players.findIndex(p => p.id === socket.id);
       
-      // Reset game if in waiting phase
-      if (gameState.phase === 'waiting' && gameState.players.size === 0) {
-        gameState = {
-          players: new Map(),
-          phase: 'waiting',
-          round: 0,
-          nightActions: { kill: null, save: null, investigate: null },
-          votes: new Map(),
-          hasVotingStarted: false
-        };
+      if (playerIndex !== -1) {
+        // Se for o host e o jogo não começou, deletar sala
+        if (room.host === socket.id && room.state === GAME_STATES.LOBBY) {
+          rooms.delete(roomCode);
+          io.to(roomCode).emit('room_closed', { message: 'O host saiu da sala' });
+        } else if (room.state === GAME_STATES.LOBBY) {
+          // Remover jogador do lobby
+          room.players.splice(playerIndex, 1);
+          io.to(roomCode).emit('room_updated', { room });
+        } else {
+          // Marcar como desconectado mas manter no jogo
+          io.to(roomCode).emit('player_disconnected', { 
+            playerName: room.players[playerIndex].name 
+          });
+        }
+        
+        break;
       }
     }
   });
 });
 
+// Funções auxiliares
+function getRoleDescription(role) {
+  const descriptions = {
+    [ROLES.ASSASSINO]: 'Você é um ASSASSINO. Elimine todos os cidadãos sem ser descoberto.',
+    [ROLES.DETETIVE]: 'Você é o DETETIVE. Investigue os suspeitos e descubra os assassinos.',
+    [ROLES.ANJO]: 'Você é o ANJO. Proteja um jogador todas as noites.',
+    [ROLES.CIDADAO]: 'Você é um CIDADÃO. Ajude a encontrar os assassinos através do debate.'
+  };
+  
+  return descriptions[role] || '';
+}
+
+function resolveNight(room, roomCode) {
+  const actions = room.nightActions;
+  let killTarget = null;
+  let protection = null;
+  let investigation = null;
+  
+  // Obter ações
+  if (actions[ROLES.ASSASSINO]) {
+    killTarget = actions[ROLES.ASSASSINO].targetId;
+  }
+  
+  if (actions[ROLES.ANJO]) {
+    protection = actions[ROLES.ANJO].targetId;
+  }
+  
+  if (actions[ROLES.DETETIVE]) {
+    investigation = actions[ROLES.DETETIVE];
+  }
+  
+  // Resolver investigação
+  if (investigation) {
+    const target = room.players.find(p => p.id === investigation.targetId);
+    const result = target && target.role === ROLES.ASSASSINO ? 'assassino' : 'inocente';
+    
+    io.to(investigation.playerId).emit('investigation_result', {
+      targetName: target ? target.name : 'Desconhecido',
+      result: result
+    });
+  }
+  
+  // Resolver morte
+  let deathMessage = 'Ninguém morreu esta noite.';
+  
+  if (killTarget && killTarget !== protection) {
+    const victim = room.players.find(p => p.id === killTarget);
+    if (victim) {
+      victim.isAlive = false;
+      deathMessage = `${victim.name} foi eliminado durante a noite.`;
+      
+      // Revelar papel para o jogador morto
+      io.to(victim.id).emit('player_died', {
+        message: 'Você foi eliminado!',
+        role: victim.role
+      });
+    }
+  } else if (killTarget === protection) {
+    deathMessage = 'O anjo protegeu alguém esta noite! Ninguém morreu.';
+  }
+  
+  // Verificar vitória
+  const winCondition = checkWinCondition(room);
+  if (winCondition) {
+    room.state = GAME_STATES.GAME_OVER;
+    io.to(roomCode).emit('game_over', {
+      winner: winCondition.winner,
+      message: winCondition.message,
+      players: room.players
+    });
+    return;
+  }
+  
+  // Avançar para o dia
+  room.state = GAME_STATES.DAY;
+  room.nightActions = {};
+  room.players.forEach(p => p.hasActed = false);
+  
+  io.to(roomCode).emit('phase_change', { 
+    phase: GAME_STATES.DAY,
+    day: room.currentDay,
+    nightResult: deathMessage
+  });
+}
+
+function resolveVoting(room, roomCode) {
+  const voteCounts = {};
+  
+  // Contar votos
+  for (const [voterId, targetId] of Object.entries(room.votes)) {
+    if (!voteCounts[targetId]) {
+      voteCounts[targetId] = 0;
+    }
+    voteCounts[targetId]++;
+  }
+  
+  // Encontrar mais votado
+  let maxVotes = 0;
+  let eliminated = null;
+  
+  for (const [playerId, votes] of Object.entries(voteCounts)) {
+    if (votes > maxVotes) {
+      maxVotes = votes;
+      eliminated = playerId;
+    }
+  }
+  
+  let eliminationMessage = 'Não houve consenso. Ninguém foi eliminado.';
+  
+  if (eliminated && maxVotes > 0) {
+    const victim = room.players.find(p => p.id === eliminated);
+    if (victim) {
+      victim.isAlive = false;
+      eliminationMessage = `${victim.name} foi eliminado pela votação. Papel: ${victim.role.toUpperCase()}`;
+      
+      io.to(victim.id).emit('player_died', {
+        message: 'Você foi eliminado pela votação!',
+        role: victim.role
+      });
+    }
+  }
+  
+  // Verificar vitória
+  const winCondition = checkWinCondition(room);
+  if (winCondition) {
+    room.state = GAME_STATES.GAME_OVER;
+    io.to(roomCode).emit('game_over', {
+      winner: winCondition.winner,
+      message: winCondition.message,
+      players: room.players,
+      votingResult: eliminationMessage
+    });
+    return;
+  }
+  
+  // Nova noite
+  room.currentDay++;
+  room.state = GAME_STATES.NIGHT;
+  room.votes = {};
+  room.players.forEach(p => {
+    p.hasVoted = false;
+    p.hasActed = false;
+  });
+  
+  io.to(roomCode).emit('voting_result', { 
+    message: eliminationMessage,
+    votes: voteCounts
+  });
+  
+  setTimeout(() => {
+    io.to(roomCode).emit('phase_change', { 
+      phase: GAME_STATES.NIGHT,
+      day: room.currentDay
+    });
+  }, 5000);
+}
+
+// Servir página principal
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Iniciar servidor
 const PORT = process.env.PORT || 3000;
-httpServer.listen(PORT, () => {
-  console.log(`🎮 Servidor Cidade Dorme rodando na porta ${PORT}`);
+http.listen(PORT, () => {
+  console.log(`Servidor rodando na porta ${PORT}`);
 });
