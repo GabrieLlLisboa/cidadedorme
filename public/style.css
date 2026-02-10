@@ -264,6 +264,23 @@ body {
   color: var(--dark);
 }
 
+/* ===== ROLE DISTRIBUTION INFO ===== */
+.role-distribution-info {
+  background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+  padding: 12px 16px;
+  border-radius: 10px;
+  margin-bottom: 16px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--dark);
+  border: 2px dashed var(--primary);
+}
+
+.role-distribution-info strong {
+  color: var(--primary);
+  font-weight: 700;
+}
+
 /* ===== PLAYERS ===== */
 .players-grid {
   display: grid;

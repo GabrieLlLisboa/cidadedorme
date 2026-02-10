@@ -129,6 +129,18 @@ function vote(target) {
   socket.emit('vote', { target });
 }
 
+function getRoleDistribution(playerCount) {
+  if (playerCount < 3) {
+    return null;
+  } else if (playerCount >= 3 && playerCount < 5) {
+    return { assassinos: 1, detetives: 0, anjos: 0, cidadaos: playerCount - 1 };
+  } else if (playerCount >= 5 && playerCount < 7) {
+    return { assassinos: 1, detetives: 1, anjos: 1, cidadaos: playerCount - 3 };
+  } else {
+    return { assassinos: 2, detetives: 1, anjos: 2, cidadaos: playerCount - 5 };
+  }
+}
+
 function updatePlayersList() {
   playersList.innerHTML = '';
   
@@ -149,11 +161,27 @@ function updatePlayersList() {
     playersList.appendChild(div);
   });
   
-  // Show start button only in waiting phase with 3+ players
+  const roleDistributionInfo = document.getElementById('roleDistributionInfo');
+  
+  // Show start button and distribution only in waiting phase with 3+ players
   if (gameState.phase === 'waiting' && gameState.players.length >= 3) {
+    const distribution = getRoleDistribution(gameState.players.length);
+    const buttonText = `🎮 Iniciar Jogo (${distribution.assassinos}🔪 ${distribution.detetives}🔍 ${distribution.anjos}😇 ${distribution.cidadaos}👤)`;
+    startButton.textContent = buttonText;
     startButton.classList.remove('hidden');
+    
+    // Show distribution info
+    roleDistributionInfo.innerHTML = `
+      <strong>Distribuição dos papéis:</strong><br>
+      🔪 ${distribution.assassinos} Assassino${distribution.assassinos > 1 ? 's' : ''} • 
+      🔍 ${distribution.detetives} Detetive${distribution.detetives > 1 ? 's' : ''} • 
+      😇 ${distribution.anjos} Anjo${distribution.anjos > 1 ? 's' : ''} • 
+      👤 ${distribution.cidadaos} Cidadão${distribution.cidadaos > 1 ? 's' : 'ão'}
+    `;
+    roleDistributionInfo.classList.remove('hidden');
   } else {
     startButton.classList.add('hidden');
+    roleDistributionInfo.classList.add('hidden');
   }
 }
 
